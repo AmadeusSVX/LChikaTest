@@ -1,67 +1,10 @@
 #include <stdio.h>
-#include <opencv2\highgui.hpp>
-#include <opencv2\imgproc.hpp>
+#include "CodeLED.h"
 
-using namespace cv;
-
-struct PointData
-{
-	Point2f	position;
-	int		id;
-
-	PointData() { position = Point2f(0.0f, 0.0f); id = -1; }
-};
-
-class XWaveDetector
-{
-protected:
-	// setting values
-	int brightness_threshold;
-	int min_paint_threshold;
-	int max_paint_threshold;
-	float peak_threshold;
-
-	int window_width;
-	int window_height;
-
-	int code_threshold[2];
-
-	int decode_length_threshold;
-
-	// for cog detection
-	Mat rgb_image;
-	Mat gray_image;
-	Mat blur_image;
-	Mat thresh_image;
-	Mat labels_image;
-	Mat mask_image;
-
-	// for roi
-	Mat roi_image;
-	Mat roi_labels_image;
-
-	// for Decode
-	Mat sum_image;
-	Mat sobel_image;
-	Mat barcode_image;
-	Mat dft_image;
-
-	Mat element_erode;
-	Mat element_dilate;
-
-	int	 DynamicThresholding();
-	void DetectCenter(int in_peak_threshold, int in_min_area_threshold, int in_max_area_threshold, std::vector<PointData>& inout_points);
-	void SetROI(int in_width, int in_height, Point2f in_position);
-	void GenerateBarcode();
-	void DecodeID(PointData& inout_points);
-public:
-	void Initialize(Mat in_image);
-	void Run(Mat in_image, std::vector<PointData>& out_points);
-	void Finalize();
-};
+char debug_log[100000];
 
 
-void XWaveDetector::Initialize(Mat in_image)
+void CodeLED::Initialize(Mat in_image)
 {
 	// initialize setting values
 	window_width = 40;
@@ -69,7 +12,7 @@ void XWaveDetector::Initialize(Mat in_image)
 	brightness_threshold = 150;
 	min_paint_threshold = 10;
 	max_paint_threshold = 500;
-	peak_threshold = 20.0f;
+	peak_threshold = 50.0f;
 
 	code_threshold[0] = 8;
 	code_threshold[1] = 15;
@@ -88,7 +31,7 @@ void XWaveDetector::Initialize(Mat in_image)
 	barcode_image = cv::Mat(Size(window_width, window_height), CV_8U);
 }
 
-int XWaveDetector::DynamicThresholding()
+int CodeLED::DynamicThresholding()
 {
 	int max_value = 0;
 	for (int i = 0; i < gray_image.size().width * gray_image.size().height; i++) {
@@ -101,26 +44,27 @@ int XWaveDetector::DynamicThresholding()
 		return max_value - 80;
 }
 
-void XWaveDetector::Run(Mat in_image, std::vector<PointData>& out_points)
+void CodeLED::Run(Mat in_image, std::vector<PointData>& out_points)
 {
 	cvtColor(in_image, gray_image, CV_BGRA2GRAY);	// Should be only 8bit or more...?
 
 	brightness_threshold = DynamicThresholding();
-	printf("Threshold: %d\n", brightness_threshold);
+//	printf("Threshold: %d\n", brightness_threshold);
 
 	DetectCenter(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);
+
 	for (int i = 0; i < out_points.size(); i++)
 	{
 		SetROI(window_width, window_height, out_points[i].position);
 		GenerateBarcode();
 		DecodeID(out_points[i]);
-		printf("id:%d x:%f, y:%f\n", out_points[i].id, out_points[i].position.x, out_points[i].position.y);
-		cv::imshow("ROI", roi_image);
-		cv::imshow("Barcode", barcode_image);
+//		printf("id:%d x:%f, y:%f\n", out_points[i].id, out_points[i].position.x, out_points[i].position.y);
+//		cv::imshow("ROI", roi_image);
+//		cv::imshow("Barcode", barcode_image);
 	}
 }
 
-void XWaveDetector::DecodeID(PointData& inout_point)
+void CodeLED::DecodeID(PointData& inout_point)
 {
 	std::vector<int>	       diff_width;
 	std::vector<unsigned char> decode_array;
@@ -195,7 +139,10 @@ void XWaveDetector::DecodeID(PointData& inout_point)
 							+ (int)((decode_id >> 1) & 0b00000001)
 							+ (int)((decode_id) & 0b00000001))
 							& 0b00000111;
-				if (decode_parity == parity) { inout_point.id = (int)decode_id; }
+				if (decode_parity == parity) { inout_point.id = (int)decode_id; break; }
+				else{
+					printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
+				}
 				is_head = false;
 			}
 		}
@@ -217,34 +164,44 @@ void XWaveDetector::DecodeID(PointData& inout_point)
 			is_head = false;
 		}
 */
-
 		digit++;
 	}
 
-	// 
-	FILE* fp = NULL; //fopen("Debug2.csv", "w");
-	if (fp)
+//	printf("array length:%d decide id:%d\n", decode_array.size(), decode_id);
+
+	if (decode_array.size() > 11 && decode_id == 0)
+//	if(false)
 	{
-		fprintf(fp, ", %d", diff_width[0]);
-
-		for (int i = 1; i < diff_width.size(); i++) {
-			fprintf(fp, ", %d", diff_width[i]);
+		FILE* fp = fopen("Debug.csv", "w");
+		if(fp)
+		{
+			fprintf(fp, "%s", debug_log);
+			fclose(fp);
 		}
-		fprintf(fp, "\n");
 
-		fprintf(fp, ", %d", decode_array[0]);
+		FILE* fp2 = fopen("Debug2.csv", "w");
+		if (fp2)
+		{
+			fprintf(fp2, ", %d", diff_width[0]);
 
-		for (int i = 1; i < decode_array.size(); i++) {
-			fprintf(fp, ", %d", decode_array[i]);
+			for (int i = 1; i < diff_width.size(); i++) {
+				fprintf(fp2, ", %d", diff_width[i]);
+			}
+			fprintf(fp2, "\n");
+
+			fprintf(fp2, ", %d", decode_array[0]);
+
+			for (int i = 1; i < decode_array.size(); i++) {
+				fprintf(fp2, ", %d", decode_array[i]);
+			}
+			fprintf(fp2, "\n");
+
+			fclose(fp2);
 		}
-		fprintf(fp, "\n");
-
-		fclose(fp);
 	}
-
 }
 
-void XWaveDetector::GenerateBarcode()
+void CodeLED::GenerateBarcode()
 {
 	float ave_value = 0.0f;
 
@@ -278,7 +235,7 @@ void XWaveDetector::GenerateBarcode()
 
 	ave_value /= window_width;
 
-	cv::imshow("SUM", sum_image / 10000.0f);
+//	cv::imshow("SUM", sum_image / 10000.0f);
 
 	cv::GaussianBlur(sum_image, sum_image, cv::Size(1, 5), 0.0f);
 	cv::Sobel(sum_image, sobel_image, CV_32F, 0, 1, 5);
@@ -382,38 +339,38 @@ void XWaveDetector::GenerateBarcode()
 	}
 
 	// for debug log
-	FILE* fp = NULL; //fopen("Debug.csv", "w");
-	if (fp)
+//	FILE* fp = fopen("Debug.csv", "w");
+//	if (fp)
 	{
-		fprintf(fp, ", %f", sum_image.at<float>(0, 0));
+		sprintf(debug_log, ", %f", sum_image.at<float>(0, 0));
 
 		for (int y = 1; y < window_height; y++) {
-			fprintf(fp, ", %f", sum_image.at<float>(y, 0));
+			sprintf(debug_log, "%s, %f", debug_log, sum_image.at<float>(y, 0));
 		}
-		fprintf(fp, "\n");
+		sprintf(debug_log, "%s\n", debug_log);
 
-		fprintf(fp, ", %d", barcode_image.at<unsigned char>(0, 0));
+		sprintf(debug_log, "%s, %d", debug_log, barcode_image.at<unsigned char>(0, 0));
 
 		for (int y = 1; y < window_height; y++) {
-			fprintf(fp, ", %d", barcode_image.at<unsigned char>(y, 0));
+			sprintf(debug_log, "%s, %d", debug_log, barcode_image.at<unsigned char>(y, 0));
 		}
-		fprintf(fp, "\n");
+		sprintf(debug_log, "%s\n", debug_log);
 
-		fprintf(fp, ", %f", max_threshold_array[0]);
+		sprintf(debug_log, "%s, %f", debug_log, max_threshold_array[0]);
 
 		for (int y = 1; y < window_height; y++) {
-			fprintf(fp, ", %f", max_threshold_array[y]);
+			sprintf(debug_log, "%s, %f", debug_log, max_threshold_array[y]);
 		}
-		fprintf(fp, "\n");
+		sprintf(debug_log, "%s\n", debug_log);
 
-		fprintf(fp, ", %f", min_threshold_array[0]);
+		sprintf(debug_log, "%s, %f", debug_log, min_threshold_array[0]);
 
 		for (int y = 1; y < window_height; y++) {
-			fprintf(fp, ", %f", min_threshold_array[y]);
+			sprintf(debug_log, "%s, %f", debug_log, min_threshold_array[y]);
 		}
-		fprintf(fp, "\n");
+		sprintf(debug_log, "%s\n", debug_log);
 
-		fclose(fp);
+//		fclose(fp);
 	}
 
 	// genrate barcode
@@ -426,7 +383,7 @@ void XWaveDetector::GenerateBarcode()
 	}
 }
 
-void XWaveDetector::SetROI(int in_width, int in_height, Point2f in_position)
+void CodeLED::SetROI(int in_width, int in_height, Point2f in_position)
 {
 	int center_x = (int)in_position.x;
 	int center_y = (int)in_position.y;
@@ -444,7 +401,7 @@ void XWaveDetector::SetROI(int in_width, int in_height, Point2f in_position)
 	roi_labels_image = Mat(labels_image, Rect(leftup_x, leftup_y, in_width, in_height));
 }
 
-void XWaveDetector::DetectCenter(int in_peak_threshold, int in_min_area_threshold, int in_max_area_threshold, std::vector<PointData>& inout_points)
+void CodeLED::DetectCenter(int in_peak_threshold, int in_min_area_threshold, int in_max_area_threshold, std::vector<PointData>& inout_points)
 {
 	GaussianBlur(gray_image, blur_image, cv::Size(3, 3), 0);
 	threshold(blur_image, thresh_image, in_peak_threshold, 255, CV_THRESH_BINARY);
@@ -483,7 +440,7 @@ void XWaveDetector::DetectCenter(int in_peak_threshold, int in_min_area_threshol
 			PointData new_point_data;
 			new_point_data.position = Point2f(label_points[j].x / label_counter[j], label_points[j].y / label_counter[j]);
 			inout_points.push_back(new_point_data);
-			printf("label:%d num:%d x:%f, y:%f\n", j, label_counter[j], new_point_data.position.x, new_point_data.position.y);
+//			printf("label:%d num:%d x:%f, y:%f\n", j, label_counter[j], new_point_data.position.x, new_point_data.position.y);
 		}
 	}
 
@@ -511,11 +468,12 @@ void XWaveDetector::DetectCenter(int in_peak_threshold, int in_min_area_threshol
 	cv::imshow("Labeled", mask_image);
 }
 
+#ifdef __CODE_LED_TEST__
 
-
+// Unit test
 int main()
 {
-	bool video_mode = true;
+	bool video_mode = false;
 	VideoCapture camera_capture;
 
 	if(video_mode == true)
@@ -539,7 +497,7 @@ int main()
 	for(int i=0; i<10; i++)	input_mat.copyTo(visual_mat[i]);
 	output_mat = cv::Mat(input_mat.size(), input_mat.type());
 
-	XWaveDetector x_detector;
+	CodeLED x_detector;
 
 	x_detector.Initialize(input_mat);
 	std::vector<PointData> point_data;
@@ -574,3 +532,7 @@ int main()
 
 	return 0;
 }
+
+#endif // __CODE_LED_TEST__
+
+
