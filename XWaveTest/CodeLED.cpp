@@ -11,13 +11,13 @@ void CodeLED::Initialize(Mat in_image)
 	window_height = 400;
 	brightness_threshold = 150;
 	min_paint_threshold = 10;
-	max_paint_threshold = 500;
-	peak_threshold = 50.0f;
+	max_paint_threshold = 1000;
+	peak_threshold = 25.0f;
 
 	code_threshold[0] = 8;
 	code_threshold[1] = 15;
 
-	decode_length_threshold = 20;
+	decode_length_threshold = 12;
 
 	// for cog detection
 	element_erode = cv::getStructuringElement(CV_SHAPE_ELLIPSE, cv::Size(3, 3));
@@ -112,6 +112,85 @@ void CodeLED::DecodeID(PointData& inout_point)
 
 	if(decode_array.size() < decode_length_threshold) return;
 
+	// left/right bi-direction scanning
+	for (int i = 0; i < decode_array.size(); i++)
+	{
+		if (decode_array[i] == 2)
+		{
+			int min_offset = 1;
+
+			if (i < 12)
+			{
+				min_offset = 12-i;
+//				printf("Initial offset:%d\n", min_offset);
+			}
+
+			for(;min_offset <= 12 && i + min_offset < decode_array.size(); min_offset++)
+			{
+				decode_id = 0;
+				decode_parity = 0;
+
+				for(int digit = 1; digit <= 11; digit++)
+				{
+					int j;
+
+					if (digit >= min_offset) {
+						j = i + digit - 12;
+					}
+					else {
+						j = i + digit;
+					}
+
+					if(decode_array[j] == 2)
+					{
+						decode_id = 0;
+						break; 
+					}
+
+					// data 8 bit
+					if (digit > 0 && digit <= 8) {	
+ 						decode_id = decode_id | (decode_array[j] << (8 - digit));
+					}
+					// parity 3 bit
+					else 
+					{			
+						decode_parity = decode_parity | (decode_array[j] << (11 - digit));
+
+						// full bit check
+						if (digit == 11)
+						{
+							int parity = ((int)((decode_id >> 7) & 0b00000001)
+										+ (int)((decode_id >> 6) & 0b00000001)
+										+ (int)((decode_id >> 5) & 0b00000001)
+										+ (int)((decode_id >> 4) & 0b00000001)
+										+ (int)((decode_id >> 3) & 0b00000001)
+										+ (int)((decode_id >> 2) & 0b00000001)
+										+ (int)((decode_id >> 1) & 0b00000001)
+										+ (int)((decode_id) & 0b00000001))
+										& 0b00000111;
+
+							if (decode_parity == parity) 
+							{
+								inout_point.id = (int)decode_id; 
+//								printf("COMPLETE: offset:%d\n", min_offset);
+							}
+							else {
+//								printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
+								decode_id = 0;
+							}
+						}
+					}
+				}
+
+				if(decode_id > 0){ break; }
+			}
+		}
+
+		if(decode_id > 0){ break; }
+	}
+
+/*	// 
+	// left-to-right scanning
 	for (int i = 0; i < decode_array.size(); i++)
 	{
 		if (decode_array[i] == 2) 
@@ -146,30 +225,13 @@ void CodeLED::DecodeID(PointData& inout_point)
 				is_head = false;
 			}
 		}
-/*		// for 1 bit parity
 
-		else if (digit == 9 && is_head)
-		{
-			int parity = ((int)((decode_id >> 7) & 0b00000001)
-						+ (int)((decode_id >> 6) & 0b00000001)
-						+ (int)((decode_id >> 5) & 0b00000001)
-						+ (int)((decode_id >> 4) & 0b00000001)
-						+ (int)((decode_id >> 3) & 0b00000001)
-						+ (int)((decode_id >> 2) & 0b00000001)
-						+ (int)((decode_id >> 1) & 0b00000001)
-						+ (int)((decode_id) & 0b00000001))
-						& 0b00000001;
-
-			if (decode_array[i] == parity) { inout_point.id = (int)decode_id; }
-			is_head = false;
-		}
-*/
 		digit++;
 	}
-
+*/
 //	printf("array length:%d decide id:%d\n", decode_array.size(), decode_id);
 
-	if (decode_array.size() > 11 && decode_id == 0)
+	if (decode_array.size() > 15 && decode_id == 0)
 //	if(false)
 	{
 		FILE* fp = fopen("Debug.csv", "w");
@@ -488,11 +550,14 @@ int main()
 	cv::Mat input_mat;
 	cv::Mat visual_mat[10];
 	cv::Mat output_mat;
+	cv::Mat save_mat;
 
 	if(video_mode)
 		camera_capture >> input_mat;
 	else
 		input_mat = cv::imread("rawimage.png");
+
+	input_mat.copyTo(save_mat);
 
 	for(int i=0; i<10; i++)	input_mat.copyTo(visual_mat[i]);
 	output_mat = cv::Mat(input_mat.size(), input_mat.type());
@@ -515,6 +580,12 @@ int main()
 		x_detector.Run(input_mat, point_data);
 		cv::imshow("input", input_mat);
 
+		for (int i = 0; i < point_data.size(); i++)
+		{
+			printf("Point X:%.2f Y:%.2f DURATION:%d ID:%d\n", point_data[i].position.x, point_data[i].position.y, point_data[i].duration, point_data[i].id);
+			if(point_data[i].id == -1){ input_mat.copyTo(save_mat); }
+		}
+
 		output_mat.setTo(cv::Scalar(0, 0, 0));
 		input_mat.copyTo(visual_mat[current_index]);
 		for (int i = 0; i < 10; i++)
@@ -527,8 +598,8 @@ int main()
 
 	}
 
-//	if(video_mode)
-//		cv::imwrite("rawimage.png", input_mat);
+	if(video_mode)
+		cv::imwrite("rawimage.png", save_mat);
 
 	return 0;
 }
