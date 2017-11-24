@@ -12,10 +12,12 @@ void CodeLED::Initialize(Mat in_image)
 	brightness_threshold = 150;
 	min_paint_threshold = 10;
 	max_paint_threshold = 1000;
-	peak_threshold = 25.0f;
+	peak_threshold = 40.0f;
 
 	code_threshold[0] = 8;
 	code_threshold[1] = 15;
+
+	code_interval = 97;
 
 	decode_length_threshold = 12;
 
@@ -57,10 +59,81 @@ void CodeLED::Run(Mat in_image, std::vector<PointData>& out_points)
 	{
 		SetROI(window_width, window_height, out_points[i].position);
 		GenerateBarcode();
-		DecodeID(out_points[i]);
+		DecodeID2(out_points[i]);
 //		printf("id:%d x:%f, y:%f\n", out_points[i].id, out_points[i].position.x, out_points[i].position.y);
 //		cv::imshow("ROI", roi_image);
 //		cv::imshow("Barcode", barcode_image);
+	}
+}
+
+void CodeLED::DecodeID2(PointData& inout_point)
+{
+	std::vector<int>			diff_width;
+	std::vector<unsigned char>	decode_array;
+	std::vector<int>			head_start;
+	std::vector<int>			head_end;
+
+	bool is_up = false;
+	bool is_first = true;
+
+	int  diff_pos = window_height - 1;
+
+	// signal length measurement
+	for (int y = 0; y < window_height; y++)
+	{
+		if (barcode_image.at<unsigned char>(y, 0) > 0)
+		{
+			if (!is_up)
+			{
+				diff_width.push_back(-(y - diff_pos));
+				diff_pos = y; 
+			}
+
+			is_up = true;
+		}
+		else
+		{
+			if (is_up)
+			{
+				int new_diff_width = y - diff_pos;
+				if(new_diff_width > code_threshold[1])
+				{
+					head_start.push_back(y);
+					head_end.push_back(diff_pos);
+				}
+				diff_width.push_back((y - diff_pos));
+				diff_pos = y;
+			}
+
+			is_up = false;
+		}
+	}
+
+	for (int i = 0; i < int(head_start.size()) - 1; i++)
+	{
+		printf("Head start:%d\n", head_start[i]);
+		printf("Head end:%d\n", head_end[i + 1]);
+		printf("Interval:%d\n", head_end[i + 1] - head_start[i]);
+	}
+
+	if(head_start.size() > 1)
+	{
+		FILE* fp = fopen("Debug.csv", "w");
+		if (fp)
+		{
+			fprintf(fp, "%s", debug_log);
+			fclose(fp);
+		}
+	}
+
+	return;
+
+	// decode signal blank to binary
+	for (int i = 0; i<diff_width.size(); i++)
+	{
+		if (code_threshold[0] >= abs(diff_width[i])) { decode_array.push_back(0); }
+		else if (code_threshold[0] < abs(diff_width[i]) && code_threshold[1] >= abs(diff_width[i])) { decode_array.push_back(1); }
+		else if (code_threshold[1] < abs(diff_width[i])) { decode_array.push_back(2); }	// used as header code
 	}
 }
 
