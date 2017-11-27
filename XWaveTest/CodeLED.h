@@ -23,6 +23,7 @@ protected:
 	int min_paint_threshold;
 	int max_paint_threshold;
 	float peak_threshold;
+	float min_diff_threshold;
 	int code_interval;
 
 	int window_width;

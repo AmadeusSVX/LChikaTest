@@ -12,7 +12,7 @@ void CodeLEDTracker::Run(Mat in_image, std::vector<PointData>& out_points)
 	std::vector<PointData> next_tracking_points;
 	code_led.Run(in_image, code_points);
 
-	printf("Candidates %d\n", code_points.size());
+	printf("Candidates %zd\n", code_points.size());
 
 	for (int i = 0; i < code_points.size(); i++)
 	{
@@ -43,7 +43,7 @@ void CodeLEDTracker::Run(Mat in_image, std::vector<PointData>& out_points)
 
 			for (int j = 0; j < tracking_points.size(); j++)
 			{
-				float distance = norm(code_points[i].position - tracking_points[j].position);
+				float distance = (float)norm(code_points[i].position - tracking_points[j].position);
 
 				if (distance < min_distance)
 				{

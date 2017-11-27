@@ -12,12 +12,13 @@ void CodeLED::Initialize(Mat in_image)
 	brightness_threshold = 150;
 	min_paint_threshold = 10;
 	max_paint_threshold = 1000;
+	min_diff_threshold = 30.0f;
 	peak_threshold = 40.0f;
 
 	code_threshold[0] = 8;
-	code_threshold[1] = 15;
+	code_threshold[1] = 18;
 
-	code_interval = 97;
+	code_interval = 147;
 
 	decode_length_threshold = 12;
 
@@ -98,8 +99,8 @@ void CodeLED::DecodeID2(PointData& inout_point)
 				int new_diff_width = y - diff_pos;
 				if(new_diff_width > code_threshold[1])
 				{
-					head_start.push_back(y);
-					head_end.push_back(diff_pos);
+					head_start.push_back(diff_pos);
+					head_end.push_back(y);
 				}
 				diff_width.push_back((y - diff_pos));
 				diff_pos = y;
@@ -109,19 +110,223 @@ void CodeLED::DecodeID2(PointData& inout_point)
 		}
 	}
 
-	for (int i = 0; i < int(head_start.size()) - 1; i++)
+	// preparing for decode
+	int new_code_interval = code_interval;
+/*
+	if(head_start.size() >= 2)
 	{
-		printf("Head start:%d\n", head_start[i]);
-		printf("Head end:%d\n", head_end[i + 1]);
-		printf("Interval:%d\n", head_end[i + 1] - head_start[i]);
+		if(abs(code_interval - (head_start[1] - head_end[0])) < 5)
+		{
+			new_code_interval = head_start[1] - head_end[0];
+			printf("new interval %d\n", new_code_interval);
+		}
+	}
+*/
+	float unit_code = new_code_interval / 24.0f;
+	unsigned char code_filled = 0; // 0:not decoded 1:decoded for each bit
+	unsigned char parity_filled = 0; // 0:not decoded 1:decoded for each bit
+	float code_strength[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};	// strength computed by diff of brightness
+
+	unsigned char decode_id = 0;
+	unsigned char decode_parity = 0;
+
+	std::vector<int>	y1_pos;
+	std::vector<int>	y2_pos;
+
+	// forward search
+	for (int i = 0; i < head_end.size(); i++)
+	{
+		// code input
+		for (int j = 0; j < 11; j++)
+		{
+			int target_y1 = head_end[i] + int((1.5 + j * 2.0f) * unit_code + 0.5f);
+			int target_y2 = head_end[i] + int((2.5 + j * 2.0f) * unit_code + 0.5f);
+
+			// window boundary check
+			if(target_y1 >= window_height - 1 || target_y2 >= window_height - 1){	break;	}
+
+			y1_pos.push_back(target_y1);
+			y2_pos.push_back(target_y2);
+
+			float diff_value = sum_image.at<float>(target_y2, 0) - sum_image.at<float>(target_y1, 0);
+
+			if(j < 8)
+			{ 
+				// code input
+				if (diff_value > 0 && fabs(diff_value) > min_diff_threshold && code_strength[j] < fabs(diff_value))		// as 1
+				{
+					decode_id = decode_id | 0b1 << (7 - j);
+					code_filled = code_filled | 0b1 << j;
+					code_strength[j] = fabs(diff_value);
+				}
+				else if (fabs(diff_value) > min_diff_threshold && code_strength[j] < fabs(diff_value))					// as 0
+				{
+					decode_id = decode_id & ~(0b1 << (7 - j));
+					code_filled = code_filled | 0b1 << j;
+					code_strength[j] = fabs(diff_value);
+				}
+			}
+			else
+			{
+				// parity input
+				if (diff_value > 0 && fabs(diff_value) > min_diff_threshold && code_strength[j] < fabs(diff_value))		// as 1
+				{
+					decode_parity = decode_parity | 0b1 << (10 - j);
+					parity_filled = parity_filled | 0b1 << (j - 8);
+					code_strength[j] = fabs(diff_value);
+				}
+				else if (fabs(diff_value) > min_diff_threshold && code_strength[j] < fabs(diff_value))					// as 0
+				{
+					decode_parity = decode_parity & ~(0b1 << (10 - j));
+					parity_filled = parity_filled | 0b1 << (j - 8);
+					code_strength[j] = fabs(diff_value);
+				}
+			}
+		}
 	}
 
-	if(head_start.size() > 1)
+	// if code filled
+	if (code_filled == 255 && parity_filled == 0b111)
+	{
+		int parity = ((int)((decode_id >> 7) & 0b00000001)
+			+ (int)((decode_id >> 6) & 0b00000001)
+			+ (int)((decode_id >> 5) & 0b00000001)
+			+ (int)((decode_id >> 4) & 0b00000001)
+			+ (int)((decode_id >> 3) & 0b00000001)
+			+ (int)((decode_id >> 2) & 0b00000001)
+			+ (int)((decode_id >> 1) & 0b00000001)
+			+ (int)((decode_id) & 0b00000001))
+			& 0b00000111;
+
+		if (decode_parity == parity)
+		{
+			inout_point.id = (int)decode_id;
+			printf("COMPLETE\n");
+			return;
+		}
+		else {
+			decode_id = 0;
+			printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
+		}
+	}
+
+	code_filled = 0; // 0:not decoded 1:decoded for each bit
+	parity_filled = 0; // 0:not decoded 1:decoded for each bit
+	for(int i=0; i<11; i++) {code_strength[i] = 0.0f;	};	// strength computed by diff of brightness
+	decode_id = 0;
+	decode_parity = 0;
+
+	// backward search
+	for (int i = 0; i < head_start.size(); i++)
+	{
+		// code input
+		for (int j = 0; j < 11; j++)
+		{
+			int target_y1 = head_start[i] - code_interval + int((1.5 + j * 2.0f) * unit_code + 0.5f);
+			int target_y2 = head_start[i] - code_interval + int((2.5 + j * 2.0f) * unit_code + 0.5f);
+
+			// window boundary check
+			if (target_y1 < 0 || target_y2 < 0) { continue; }
+
+			y1_pos.push_back(target_y1);
+			y2_pos.push_back(target_y2);
+
+			float diff_value = sum_image.at<float>(target_y2, 0) - sum_image.at<float>(target_y1, 0);
+
+			if (j < 8)
+			{
+				// code input
+				if (diff_value > 0 && fabs(diff_value) > 10 && code_strength[j] < fabs(diff_value))		// as 1
+				{
+					decode_id = decode_id | 0b1 << (7 - j);
+					code_filled = code_filled | 0b1 << j;
+					code_strength[j] = fabs(diff_value);
+				}
+				else if (fabs(diff_value) > 10 && code_strength[j] < fabs(diff_value))					// as 0
+				{
+					decode_id = decode_id & ~(0b1 << (7 - j));
+					code_filled = code_filled | 0b1 << j;
+					code_strength[j] = fabs(diff_value);
+				}
+			}
+			else
+			{
+				// parity input
+				if (diff_value > 0 && fabs(diff_value) > 10 && code_strength[j] < fabs(diff_value))		// as 1
+				{
+					decode_parity = decode_parity | 0b1 << (10 - j);
+					parity_filled = parity_filled | 0b1 << (j - 8);
+					code_strength[j] = fabs(diff_value);
+				}
+				else if (fabs(diff_value) > 10 && code_strength[j] < fabs(diff_value))					// as 0
+				{
+					decode_parity = decode_parity & ~(0b1 << (10 - j));
+					parity_filled = parity_filled | 0b1 << (j - 8);
+					code_strength[j] = fabs(diff_value);
+				}
+			}
+		}
+	}
+
+	// if code filled
+	if (code_filled == 255 && parity_filled == 0b111)
+	{
+		int parity = ((int)((decode_id >> 7) & 0b00000001)
+			+ (int)((decode_id >> 6) & 0b00000001)
+			+ (int)((decode_id >> 5) & 0b00000001)
+			+ (int)((decode_id >> 4) & 0b00000001)
+			+ (int)((decode_id >> 3) & 0b00000001)
+			+ (int)((decode_id >> 2) & 0b00000001)
+			+ (int)((decode_id >> 1) & 0b00000001)
+			+ (int)((decode_id) & 0b00000001))
+			& 0b00000111;
+
+		if (decode_parity == parity)
+		{
+			inout_point.id = (int)decode_id;
+			printf("COMPLETE\n");
+			return;
+		}
+		else {
+			decode_id = 0;
+			printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
+		}
+	}
+
+	for (int i = 0; i < int(head_start.size()) - 1; i++)
+	{
+		printf("Head start:%d\n", head_start[i + 1]);
+		printf("Head end:%d\n", head_end[i]);
+		printf("Interval:%d\n", head_start[i + 1] - head_end[i]);
+	}
+
+	if(head_start.size() > 1 && decode_id != 120 && decode_id != 0)
 	{
 		FILE* fp = fopen("Debug.csv", "w");
 		if (fp)
 		{
 			fprintf(fp, "%s", debug_log);
+
+			fprintf(fp, "0 ");
+			for(int y=1; y<window_height; y++)
+			{
+				int i;
+				for(i=0; i<y1_pos.size(); i++){ if(y1_pos[i] == y) break;	}
+				if(i == y1_pos.size())	fprintf(fp, "0,");
+				else fprintf(fp, "255,");
+			}
+			fprintf(fp, "\n");
+
+			fprintf(fp, "0 ");
+			for (int y = 1; y<window_height; y++)
+			{
+				int i;
+				for (i = 0; i<y2_pos.size(); i++) { if (y2_pos[i] == y) break; }
+				if (i == y2_pos.size())	fprintf(fp, "0,");
+				else fprintf(fp, "255,");
+			}
+			fprintf(fp, "\n");
+			fprintf(fp, "%d %d\n", (int)decode_id, (int)decode_parity);
 			fclose(fp);
 		}
 	}
@@ -608,7 +813,7 @@ void CodeLED::DetectCenter(int in_peak_threshold, int in_min_area_threshold, int
 // Unit test
 int main()
 {
-	bool video_mode = false;
+	bool video_mode = true;
 	VideoCapture camera_capture;
 
 	if(video_mode == true)
@@ -671,8 +876,8 @@ int main()
 
 	}
 
-	if(video_mode)
-		cv::imwrite("rawimage.png", save_mat);
+//	if(video_mode)
+//		cv::imwrite("rawimage.png", save_mat);
 
 	return 0;
 }
