@@ -6,13 +6,29 @@
 
 using namespace cv;
 
+enum DataStatus
+{
+	NOT_INPUT = 0,
+	INPUTTING = 1,
+	INPUT_END = 2
+};
+
 struct PointData
 {
 	Point2f	position;
 	int		id;
 	int		duration;
+	std::string data;
+	DataStatus	data_status;
 
-	PointData() { position = Point2f(0.0f, 0.0f); id = -1; duration = 0; }
+	PointData() 
+	{ 
+		position = Point2f(0.0f, 0.0f);
+		id = -1; 
+		duration = 0; 
+		data_status = NOT_INPUT;
+		data.clear();	
+	}
 };
 
 class CodeLED

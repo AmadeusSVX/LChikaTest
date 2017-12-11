@@ -201,12 +201,12 @@ void CodeLED::DecodeID2(PointData& inout_point)
 		if (decode_parity == parity)
 		{
 			inout_point.id = (int)decode_id;
-			printf("COMPLETE\n");
+//			printf("COMPLETE\n");
 			return;
 		}
 		else {
 			decode_id = 0;
-			printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
+//			printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
 		}
 	}
 
@@ -284,12 +284,12 @@ void CodeLED::DecodeID2(PointData& inout_point)
 		if (decode_parity == parity)
 		{
 			inout_point.id = (int)decode_id;
-			printf("COMPLETE\n");
+//			printf("COMPLETE\n");
 			return;
 		}
 		else {
 			decode_id = 0;
-			printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
+//			printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
 		}
 	}
 
@@ -813,7 +813,7 @@ void CodeLED::DetectCenter(int in_peak_threshold, int in_min_area_threshold, int
 // Unit test
 int main()
 {
-	bool video_mode = true;
+	bool video_mode = false;
 	VideoCapture camera_capture;
 
 	if(video_mode == true)

@@ -21,12 +21,18 @@
     <ClInclude Include="CodeLEDTracker.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="CodeLEDComm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CodeLED.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="CodeLEDTracker.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CodeLEDComm.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

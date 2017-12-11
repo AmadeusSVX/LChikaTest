@@ -53,9 +53,9 @@ void CodeLEDTracker::Run(Mat in_image, std::vector<PointData>& out_points)
 			}
 
 			if (min_id != -1) {
-				tracking_points[min_id].duration--;							// decrement score
-				if(tracking_points[min_id].duration > 0){
-					next_tracking_points.push_back(tracking_points[min_id]);
+				code_points[i].duration = tracking_points[min_id].duration-1;						// decrement score
+				if(code_points[i].duration > 0){
+					next_tracking_points.push_back(code_points[i]);
 				}
 			}
 		}
