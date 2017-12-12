@@ -10,7 +10,8 @@ enum DataStatus
 {
 	NOT_INPUT = 0,
 	INPUTTING = 1,
-	INPUT_END = 2
+	INPUT_END = 2,
+	UPDATING  = 3,		// input end and new inputting
 };
 
 struct PointData
@@ -18,7 +19,8 @@ struct PointData
 	Point2f	position;
 	int		id;
 	int		duration;
-	std::string data;
+	std::string temp_data;		// data for input
+	std::string data;			// complete data for read
 	DataStatus	data_status;
 
 	PointData() 

@@ -2,6 +2,9 @@
 
 void CodeLEDComm::Initialize(Mat in_image)
 {
+	led_comm_interval = 1000.0f;
+	led_comm_bitrate = 100.0f;
+
 	tracking_threshold = 30.0f;
 	code_led.Initialize(in_image);
 }
@@ -17,7 +20,6 @@ void CodeLEDComm::Run(Mat in_image, std::vector<PointData>& out_points)
 
 	for (int i = 0; i < code_points.size(); i++)
 	{
-
 		float min_distance = tracking_threshold;
 		int min_id = -1;
 
@@ -37,6 +39,7 @@ void CodeLEDComm::Run(Mat in_image, std::vector<PointData>& out_points)
 			// copy data to next
 			code_points[i].duration = tracking_points[min_id].duration + 1;
 			code_points[i].data_status = tracking_points[min_id].data_status;
+			code_points[i].temp_data = tracking_points[min_id].temp_data;
 			code_points[i].data = tracking_points[min_id].data;
 
 			current_tracking_points.push_back(tracking_points[min_id]);
@@ -61,18 +64,31 @@ void CodeLEDComm::Run(Mat in_image, std::vector<PointData>& out_points)
 			if(data_byte == 2)		// header
 			{
 //				printf("Data start\n");
-				next_tracking_points[i].data_status = INPUTTING;
-				next_tracking_points[i].data.clear(); 
+				if(next_tracking_points[i].data_status == INPUT_END)
+				{
+					next_tracking_points[i].data_status = UPDATING;
+				}
+				else
+				{
+					next_tracking_points[i].data_status = INPUTTING;
+				}
+				tick_meter.reset();
+				tick_meter.start();
+				next_tracking_points[i].temp_data.clear(); 
 			}
-			else if(data_byte == 3 && next_tracking_points[i].data_status == INPUTTING)	// footer
+			else if(data_byte == 3 && (next_tracking_points[i].data_status == INPUTTING || next_tracking_points[i].data_status == UPDATING))	// footer
 			{
 //				printf("Data end\n");
 				next_tracking_points[i].data_status = INPUT_END;
+				next_tracking_points[i].data = next_tracking_points[i].temp_data;
+				tick_meter.stop();
+				led_comm_interval = (float)tick_meter.getTimeSec();
+				led_comm_bitrate = next_tracking_points[i].data.length() * 8.0f / led_comm_interval;
 			}
-			else if(next_tracking_points[i].data_status == INPUTTING)
+			else if(next_tracking_points[i].data_status == INPUTTING || next_tracking_points[i].data_status == UPDATING)
 			{
 //				printf("Data input\n");
-				next_tracking_points[i].data.push_back(data_byte);
+				next_tracking_points[i].temp_data.push_back(data_byte);
 			}
 		}
 	}
@@ -140,8 +156,10 @@ int main()
 		cv::imshow("input", input_mat);
 
 		for (int i = 0; i < point_data.size(); i++) {
-			if(point_data[i].data_status == INPUT_END)
-				printf("id:%d duration:%d --%s-- x:%f, y:%f\n", point_data[i].id, point_data[i].duration, point_data[i].data.c_str(), point_data[i].position.x, point_data[i].position.y);
+			if(point_data[i].data_status == INPUT_END || point_data[i].data_status == UPDATING)
+			{ 
+				printf("id:%d duration:%d speed:%.2f bps --%s-- x:%f, y:%f\n", point_data[i].id, point_data[i].duration, x_tracker.GetBitRate(), point_data[i].data.c_str(), point_data[i].position.x, point_data[i].position.y);
+			}
 		}
 
 		if (point_data.size() == 0) {
