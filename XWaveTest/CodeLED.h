@@ -51,6 +51,9 @@ protected:
 
 	int decode_length_threshold;
 
+	// for timer
+	TickMeter tick_meter;
+
 	// for cog detection
 	Mat rgb_image;
 	Mat gray_image;
@@ -58,6 +61,13 @@ protected:
 	Mat thresh_image;
 	Mat labels_image;
 	Mat mask_image;
+
+	// for cog detection2
+	Mat horizontal_brightness;
+	Mat horizontal_sobel;
+	Mat vertical_sobel;
+	Mat vertical_band_sobel;
+	Mat vertical_brightness;
 
 	// for roi
 	Mat roi_image;
@@ -74,6 +84,7 @@ protected:
 
 	int	 DynamicThresholding();
 	void DetectCenter(int in_peak_threshold, int in_min_area_threshold, int in_max_area_threshold, std::vector<PointData>& inout_points);
+	void DetectCenter2(int in_peak_threshold, int in_min_area_threshold, int in_max_area_threshold, std::vector<PointData>& inout_points);
 	void SetROI(int in_width, int in_height, Point2f in_position);
 	void GenerateBarcode();
 	void DecodeID(PointData& inout_points);		// for gap length coding

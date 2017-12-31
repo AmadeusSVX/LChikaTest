@@ -54,7 +54,8 @@ void CodeLED::Run(Mat in_image, std::vector<PointData>& out_points)
 	brightness_threshold = DynamicThresholding();
 //	printf("Threshold: %d\n", brightness_threshold);
 
-	DetectCenter(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);
+//	DetectCenter(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);
+	DetectCenter2(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);
 
 	for (int i = 0; i < out_points.size(); i++)
 	{
@@ -783,7 +784,7 @@ void CodeLED::DetectCenter(int in_peak_threshold, int in_min_area_threshold, int
 //			printf("label:%d num:%d x:%f, y:%f\n", j, label_counter[j], new_point_data.position.x, new_point_data.position.y);
 		}
 	}
-
+/*
 	// for debug
 	mask_image = cv::Mat(labels_image.size(), CV_8U);
 	mask_image.setTo(0);
@@ -806,6 +807,116 @@ void CodeLED::DetectCenter(int in_peak_threshold, int in_min_area_threshold, int
 	}
 
 	cv::imshow("Labeled", mask_image);
+*/
+}
+
+void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, int in_max_area_threshold, std::vector<PointData>& inout_points)
+{
+	horizontal_brightness = Mat(Size(gray_image.size().width, 1), CV_32F);
+	horizontal_sobel = Mat(Size(gray_image.size().width, 1), CV_32F);	horizontal_brightness.setTo(0.0f);
+	std::vector<PointData> point_candidates;
+
+	vertical_sobel = Mat(Size(gray_image.size().width, gray_image.size().height), CV_32F);
+	vertical_band_sobel = Mat(Size(20, gray_image.size().height), CV_32F);
+
+	tick_meter.reset();
+	tick_meter.start();
+	Sobel(gray_image, vertical_sobel, CV_32F, 0, 1, 5);
+
+	for (int x = 0; x < gray_image.size().width; x++)
+	{
+		for (int y = 0; y < gray_image.size().height; y++)
+		{
+			horizontal_brightness.at<float>(0, x) += fabs(vertical_sobel.at<float>(y, x));
+		}
+	}
+
+	tick_meter.stop();
+	printf("Process Time1: %f\n", tick_meter.getTimeMilli());
+
+	GaussianBlur(horizontal_brightness, horizontal_brightness, Size(5, 1), 0);
+	Sobel(horizontal_brightness, horizontal_sobel, CV_32F, 1, 0, 5);
+
+	for (int x = 0; x < gray_image.size().width - 1; x++)
+	{
+		float first_value = horizontal_sobel.at<float>(0, x);
+		float second_value = horizontal_sobel.at<float>(0, x + 1);
+		if (first_value > 0 && second_value < 0 && horizontal_brightness.at<float>(0, x) > 30000.0f)
+		{
+			PointData new_point;
+			new_point.position.x = x + (first_value/(first_value - second_value)); // compute with subpixel accuracy
+			new_point.position.y = 0.0f;
+			point_candidates.push_back(new_point);
+		}
+	}
+
+	vertical_brightness = Mat(Size(1, gray_image.size().height), CV_32F);
+
+	for (int i = 0; i < point_candidates.size(); i++)
+	{
+		vertical_brightness.setTo(0.0f);
+		float max_vertical_value = 0.0f;
+
+		for (int y = 0; y < gray_image.size().height; y++)
+		{
+
+			int center_x = point_candidates[i].position.x;
+
+			if (center_x < 10){ center_x = 10;}
+			if (center_x >= gray_image.size().height - 10) { center_x = gray_image.size().height - 11; }
+			for (int x = center_x - 10; x < center_x + 10; x++)
+			{
+				vertical_brightness.at<float>(y, 0) += gray_image.at<unsigned char>(y, x);
+			}
+		}
+
+		GaussianBlur(vertical_brightness, vertical_brightness, Size(1, 3), 0);
+		Sobel(vertical_brightness, vertical_band_sobel, CV_32F, 0, 1, 5);
+
+		for (int y = 0; y < gray_image.size().height - 1; y++)
+		{
+			float first_value = vertical_band_sobel.at<float>(y, 0);
+			float second_value = vertical_band_sobel.at<float>(y + 1, 0);
+			if (first_value > 0 && second_value < 0 && vertical_brightness.at<float>(y, 0) > max_vertical_value)
+			{
+				max_vertical_value = vertical_brightness.at<float>(y, 0);
+				point_candidates[i].position.y = y + (first_value / (first_value - second_value)); // compute with subpixel accuracy
+			}
+		}
+
+//		printf("Point candidate x:%f y:%f\n", point_candidates[i].position.x, point_candidates[i].position.y);
+	}
+
+	inout_points = point_candidates;
+
+/*
+	Mat vertical_brightness_disp = Mat(Size(gray_image.size().width, gray_image.size().height), CV_32F);
+
+	// for debug display
+	for (int x = 0; x < gray_image.size().width; x++)
+	{
+		for (int y = 0; y < gray_image.size().height; y++)
+		{
+			vertical_brightness_disp.at<float>(y, x) = vertical_brightness.at<float>(y, 0);
+		}
+	}
+
+	cv::imshow("vertical_brightness_disp", vertical_brightness_disp * 0.001f);
+
+
+	Mat horizontal_brightness_disp = Mat(Size(gray_image.size().width, gray_image.size().height), CV_32F);
+
+	// for debug display
+	for (int x = 0; x < gray_image.size().width; x++)
+	{
+		for (int y = 0; y < gray_image.size().height; y++)
+		{
+			horizontal_brightness_disp.at<float>(y, x) = horizontal_sobel.at<float>(0, x);
+		}
+	}
+
+	cv::imshow("horizontal", horizontal_brightness_disp * 0.00001f);
+*/
 }
 
 #ifdef __CODE_LED_TEST__
