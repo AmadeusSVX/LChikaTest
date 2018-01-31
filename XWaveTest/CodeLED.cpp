@@ -3,7 +3,6 @@
 
 char debug_log[100000];
 
-
 void CodeLED::Initialize(Mat in_image)
 {
 	// initialize setting values
@@ -994,5 +993,3 @@ int main()
 }
 
 #endif // __CODE_LED_TEST__
-
-
