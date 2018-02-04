@@ -112,18 +112,22 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="OpenCV331d.props" />
+    <Import Project="FlyCapture2x64d.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='DebugLED|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="OpenCV331d.props" />
+    <Import Project="FlyCapture2x64d.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="OpenCV331.props" />
+    <Import Project="FlyCapture2x64.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseLED|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="OpenCV331.props" />
+    <Import Project="FlyCapture2x64.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup />
@@ -215,11 +219,13 @@
     <ClCompile Include="CodeLED.cpp" />
     <ClCompile Include="CodeLEDComm.cpp" />
     <ClCompile Include="CodeLEDTracker.cpp" />
+    <ClCompile Include="Flea3.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CodeLED.h" />
     <ClInclude Include="CodeLEDComm.h" />
     <ClInclude Include="CodeLEDTracker.h" />
+    <ClInclude Include="Flea3.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

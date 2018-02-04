@@ -7,17 +7,19 @@ void CodeLED::Initialize(Mat in_image)
 {
 	// initialize setting values
 	window_width = 40;
-	window_height = 400;
+	window_height = 800;
 	brightness_threshold = 150;
 	min_paint_threshold = 10;
 	max_paint_threshold = 1000;
 	min_diff_threshold = 30.0f;
-	peak_threshold = 40.0f;
+//	peak_threshold = 40.0f;
+	peak_threshold = 100.0f;
 
 	code_threshold[0] = 8;
 	code_threshold[1] = 18;
 
-	code_interval = 147;
+//	code_interval = 147;
+	code_interval = 188;
 
 	decode_length_threshold = 12;
 
@@ -48,13 +50,23 @@ int CodeLED::DynamicThresholding()
 
 void CodeLED::Run(Mat in_image, std::vector<PointData>& out_points)
 {
-	cvtColor(in_image, gray_image, CV_BGRA2GRAY);	// Should be only 8bit or more...?
 
+	// 0.6ms
+//	cvtColor(in_image, gray_image, CV_BGRA2GRAY);	// Should be only 8bit or more...?
+	in_image.copyTo(gray_image);
+
+	// 1.5ms
 	brightness_threshold = DynamicThresholding();
 //	printf("Threshold: %d\n", brightness_threshold);
 
-//	DetectCenter(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);
-	DetectCenter2(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);
+	tick_meter.reset();
+	tick_meter.start();
+
+//	DetectCenter(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);	// 9ms
+	DetectCenter2(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);	// 12ms
+
+	tick_meter.stop();
+	printf("Process Time1: %f\n", tick_meter.getTimeMilli());
 
 	for (int i = 0; i < out_points.size(); i++)
 	{
@@ -112,6 +124,7 @@ void CodeLED::DecodeID2(PointData& inout_point)
 
 	// preparing for decode
 	int new_code_interval = code_interval;
+
 /*
 	if(head_start.size() >= 2)
 	{
@@ -292,14 +305,14 @@ void CodeLED::DecodeID2(PointData& inout_point)
 //			printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
 		}
 	}
-
+/*
 	for (int i = 0; i < int(head_start.size()) - 1; i++)
 	{
 		printf("Head start:%d\n", head_start[i + 1]);
 		printf("Head end:%d\n", head_end[i]);
 		printf("Interval:%d\n", head_start[i + 1] - head_end[i]);
 	}
-
+*/
 	if(head_start.size() > 1 && decode_id != 120 && decode_id != 0)
 	{
 		FILE* fp = fopen("Debug.csv", "w");
@@ -342,205 +355,6 @@ void CodeLED::DecodeID2(PointData& inout_point)
 	}
 }
 
-void CodeLED::DecodeID(PointData& inout_point)
-{
-	std::vector<int>	       diff_width;
-	std::vector<unsigned char> decode_array;
-	bool is_up = false;
-	int  diff_pos = window_height - 1;
-
-	// signal length measurement
-	for (int y = 0; y < window_height; y++)
-	{
-		if (barcode_image.at<unsigned char>(y, 0) > 0)
-		{
-			if (!is_up)
-			{
-				diff_width.push_back(-(y - diff_pos));
-				diff_pos = y;
-			}
-
-			is_up = true;
-		}
-		else
-		{
-			if (is_up)
-			{
-				diff_width.push_back((y - diff_pos));
-				diff_pos = y;
-			}
-
-			is_up = false;
-		}
-	}
-
-	// decode signal blank to binary
-	for (int i = 0; i<diff_width.size(); i++)
-	{
-		if (code_threshold[0] >= abs(diff_width[i])) { decode_array.push_back(0); }
-		else if (code_threshold[0] < abs(diff_width[i]) && code_threshold[1] >= abs(diff_width[i])) { decode_array.push_back(1); }
-		else if (code_threshold[1] < abs(diff_width[i])) { decode_array.push_back(2); }	// used as header code
-	}
-
-	// decode binary to ID
-	bool is_head = false;
-	int digit = 0;
-	unsigned char decode_id = 0;
-	unsigned char decode_parity = 0;
-
-	if(decode_array.size() < decode_length_threshold) return;
-
-	// left/right bi-direction scanning
-	for (int i = 0; i < decode_array.size(); i++)
-	{
-		if (decode_array[i] == 2)
-		{
-			int min_offset = 1;
-
-			if (i < 12)
-			{
-				min_offset = 12-i;
-//				printf("Initial offset:%d\n", min_offset);
-			}
-
-			for(;min_offset <= 12 && i + min_offset < decode_array.size(); min_offset++)
-			{
-				decode_id = 0;
-				decode_parity = 0;
-
-				for(int digit = 1; digit <= 11; digit++)
-				{
-					int j;
-
-					if (digit >= min_offset) {
-						j = i + digit - 12;
-					}
-					else {
-						j = i + digit;
-					}
-
-					if(decode_array[j] == 2)
-					{
-						decode_id = 0;
-						break; 
-					}
-
-					// data 8 bit
-					if (digit > 0 && digit <= 8) {	
- 						decode_id = decode_id | (decode_array[j] << (8 - digit));
-					}
-					// parity 3 bit
-					else 
-					{			
-						decode_parity = decode_parity | (decode_array[j] << (11 - digit));
-
-						// full bit check
-						if (digit == 11)
-						{
-							int parity = ((int)((decode_id >> 7) & 0b00000001)
-										+ (int)((decode_id >> 6) & 0b00000001)
-										+ (int)((decode_id >> 5) & 0b00000001)
-										+ (int)((decode_id >> 4) & 0b00000001)
-										+ (int)((decode_id >> 3) & 0b00000001)
-										+ (int)((decode_id >> 2) & 0b00000001)
-										+ (int)((decode_id >> 1) & 0b00000001)
-										+ (int)((decode_id) & 0b00000001))
-										& 0b00000111;
-
-							if (decode_parity == parity) 
-							{
-								inout_point.id = (int)decode_id; 
-//								printf("COMPLETE: offset:%d\n", min_offset);
-							}
-							else {
-//								printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
-								decode_id = 0;
-							}
-						}
-					}
-				}
-
-				if(decode_id > 0){ break; }
-			}
-		}
-
-		if(decode_id > 0){ break; }
-	}
-
-/*	// 
-	// left-to-right scanning
-	for (int i = 0; i < decode_array.size(); i++)
-	{
-		if (decode_array[i] == 2) 
-		{
-			digit = 0;
-			is_head = true; 
-			decode_id = 0;
-			decode_parity = 0;
-		}
-
-		if (digit > 0 && digit <= 8 && is_head) {						// data 8 bit
-			decode_id = decode_id | (decode_array[i] << (8 - digit));
-		}
-		else if (digit > 8 && digit <= 11 && is_head) {					// parity 3 bit
-			decode_parity = decode_parity | (decode_array[i] << (11 - digit));
-
-			if (digit == 11)
-			{
-				int parity = ((int)((decode_id >> 7) & 0b00000001)
-							+ (int)((decode_id >> 6) & 0b00000001)
-							+ (int)((decode_id >> 5) & 0b00000001)
-							+ (int)((decode_id >> 4) & 0b00000001)
-							+ (int)((decode_id >> 3) & 0b00000001)
-							+ (int)((decode_id >> 2) & 0b00000001)
-							+ (int)((decode_id >> 1) & 0b00000001)
-							+ (int)((decode_id) & 0b00000001))
-							& 0b00000111;
-				if (decode_parity == parity) { inout_point.id = (int)decode_id; break; }
-				else{
-					printf("PARITY ERROR: code:%d  parity:%d\n", decode_id, decode_parity);
-				}
-				is_head = false;
-			}
-		}
-
-		digit++;
-	}
-*/
-//	printf("array length:%d decide id:%d\n", decode_array.size(), decode_id);
-
-	if (decode_array.size() > 15 && decode_id == 0)
-//	if(false)
-	{
-		FILE* fp = fopen("Debug.csv", "w");
-		if(fp)
-		{
-			fprintf(fp, "%s", debug_log);
-			fclose(fp);
-		}
-
-		FILE* fp2 = fopen("Debug2.csv", "w");
-		if (fp2)
-		{
-			fprintf(fp2, ", %d", diff_width[0]);
-
-			for (int i = 1; i < diff_width.size(); i++) {
-				fprintf(fp2, ", %d", diff_width[i]);
-			}
-			fprintf(fp2, "\n");
-
-			fprintf(fp2, ", %d", decode_array[0]);
-
-			for (int i = 1; i < decode_array.size(); i++) {
-				fprintf(fp2, ", %d", decode_array[i]);
-			}
-			fprintf(fp2, "\n");
-
-			fclose(fp2);
-		}
-	}
-}
-
 void CodeLED::GenerateBarcode()
 {
 	float ave_value = 0.0f;
@@ -553,8 +367,8 @@ void CodeLED::GenerateBarcode()
 
 		for (int x = 0; x < window_width; x++)
 		{
-			unsigned short label_value = roi_labels_image.at<unsigned short>(y, x);
-			if (label_value == 0)
+//			unsigned short label_value = roi_labels_image.at<unsigned short>(y, x);
+//			if (label_value == 0)
 			{
 				sum_value += (float)(roi_image.at<unsigned char>(y, x));
 				sum_count++;
@@ -574,11 +388,11 @@ void CodeLED::GenerateBarcode()
 	}
 
 	ave_value /= window_width;
-
-//	cv::imshow("SUM", sum_image / 10000.0f);
-
-	cv::GaussianBlur(sum_image, sum_image, cv::Size(1, 5), 0.0f);
+//	cv::imshow("ROI", roi_image);
+//	cv::imshow("SUM", sum_image / 3000.0f);
+	cv::GaussianBlur(sum_image, sum_image, cv::Size(1, 9), 0.0f);
 	cv::Sobel(sum_image, sobel_image, CV_32F, 0, 1, 5);
+//	cv::imshow("SOBEL", sobel_image * 0.001f);
 
 	barcode_image.setTo(0);
 
@@ -591,11 +405,13 @@ void CodeLED::GenerateBarcode()
 	float min_threshold_array[1048];
 	float max_threshold_array[1048];
 
+	// generating barcode image
 	for (int y = 0; y < window_height - 1; y++)
 	{
 		float sobel_value1 = sobel_image.at<float>(y, 0);
 		float sobel_value2 = sobel_image.at<float>(y + 1, 0);
 
+		// when passing high peak, it must be 1
 		if (sobel_value1 > 0
 		 && sobel_value2 <= 0) {
 			float peak_rate = 1.0f - sobel_value1 / (sobel_value1 - sobel_value2);
@@ -607,10 +423,9 @@ void CodeLED::GenerateBarcode()
 				is_peak = true;
 				is_up = true;
 
-				if (is_peak
-					&& is_bottom)
+				if (is_bottom)
 				{
-					float middle_threshold = (peak_value + bottom_value) / 3.0f;		// ideally, 2.0. But actually it's lower.
+					float middle_threshold = (peak_value + bottom_value) / 2.0f;		// ideally, 2.0. But actually it's lower.
 					int current_y = y - 1;
 
 					while (current_y >= 0)
@@ -630,6 +445,7 @@ void CodeLED::GenerateBarcode()
 				}
 			}
 		}
+		// when passing low peak, it must be 0
 		else if (sobel_value1 <= 0
 			&& sobel_value2 > 0)
 		{
@@ -642,10 +458,9 @@ void CodeLED::GenerateBarcode()
 				is_bottom = true;
 				is_up = false;
 
-				if (is_peak
-					&& is_bottom)
+				if (is_peak)
 				{
-					float middle_threshold = (peak_value + bottom_value) / 3.0f;		// ideally, 2.0. But actually it's lower.
+					float middle_threshold = (peak_value + bottom_value) / 2.0f;		// ideally, 2.0. But actually it's lower.
 					int current_y = y - 1;
 					while (current_y >= 0)
 					{
@@ -712,7 +527,14 @@ void CodeLED::GenerateBarcode()
 
 //		fclose(fp);
 	}
-
+/*
+	FILE* fp = fopen("Debug.csv", "w");
+	if (fp)
+	{
+		fprintf(fp, debug_log);
+		fclose(fp);
+	}
+*/
 	// genrate barcode
 	for (int y = 0; y < window_height; y++) 
 	{
@@ -818,10 +640,9 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 	vertical_sobel = Mat(Size(gray_image.size().width, gray_image.size().height), CV_32F);
 	vertical_band_sobel = Mat(Size(20, gray_image.size().height), CV_32F);
 
-	tick_meter.reset();
-	tick_meter.start();
 	Sobel(gray_image, vertical_sobel, CV_32F, 0, 1, 5);
 
+	// generating integral image of vertical sobel image
 	for (int x = 0; x < gray_image.size().width; x++)
 	{
 		for (int y = 0; y < gray_image.size().height; y++)
@@ -830,17 +651,17 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 		}
 	}
 
-	tick_meter.stop();
-	printf("Process Time1: %f\n", tick_meter.getTimeMilli());
 
+	// smoothing
 	GaussianBlur(horizontal_brightness, horizontal_brightness, Size(5, 1), 0);
 	Sobel(horizontal_brightness, horizontal_sobel, CV_32F, 1, 0, 5);
 
+	// x peak detection
 	for (int x = 0; x < gray_image.size().width - 1; x++)
 	{
 		float first_value = horizontal_sobel.at<float>(0, x);
 		float second_value = horizontal_sobel.at<float>(0, x + 1);
-		if (first_value > 0 && second_value < 0 && horizontal_brightness.at<float>(0, x) > 30000.0f)
+		if (first_value > 0 && second_value < 0 && horizontal_brightness.at<float>(0, x) > 100000.0f)
 		{
 			PointData new_point;
 			new_point.position.x = x + (first_value/(first_value - second_value)); // compute with subpixel accuracy
@@ -859,7 +680,7 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 		for (int y = 0; y < gray_image.size().height; y++)
 		{
 
-			int center_x = point_candidates[i].position.x;
+			int center_x = static_cast<int>(point_candidates[i].position.x);
 
 			if (center_x < 10){ center_x = 10;}
 			if (center_x >= gray_image.size().height - 10) { center_x = gray_image.size().height - 11; }
@@ -920,19 +741,27 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 
 #ifdef __CODE_LED_TEST__
 
+#include "Flea3.h"
+
 // Unit test
 int main()
 {
-	bool video_mode = false;
-	VideoCapture camera_capture;
+	bool video_mode = true;
+	Flea3* camera_capture = NULL;
 
 	if(video_mode == true)
 	{ 
-		camera_capture.open(2);
-		camera_capture.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
-		camera_capture.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
-		camera_capture.set(CV_CAP_PROP_EXPOSURE, -12.0f);
-		camera_capture.set(CV_CAP_PROP_GAIN, 300.0f);
+		camera_capture = new Flea3(0);
+		camera_capture->SetShutter(0.031f);
+		camera_capture->SetExposure(2.4f);
+		camera_capture->SetGamma(4.0f);
+		camera_capture->SetGain(18.1f);
+
+//		camera_capture.open(0);
+//		camera_capture.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
+//		camera_capture.set(CV_CAP_PROP_FRAME_HEIGHT, 960);
+//		camera_capture.set(CV_CAP_PROP_EXPOSURE, -12.0f);
+//		camera_capture.set(CV_CAP_PROP_GAIN, 300.0f);
 	}
 
 	cv::Mat input_mat;
@@ -941,9 +770,10 @@ int main()
 	cv::Mat save_mat;
 
 	if(video_mode)
-		camera_capture >> input_mat;
+//		camera_capture >> input_mat;
+		input_mat = camera_capture->Run();
 	else
-		input_mat = cv::imread("rawimage.png");
+		input_mat = cv::imread("rawimage1.png");
 
 	input_mat.copyTo(save_mat);
 
@@ -960,7 +790,8 @@ int main()
 	while (true)
 	{
 		if(video_mode)
-			camera_capture >> input_mat;
+			input_mat = camera_capture->Run();
+//			camera_capture >> input_mat;
 
 		int input_key = cv::waitKey(1);
 		if (input_key == ' ') break;
@@ -973,7 +804,7 @@ int main()
 			printf("Point X:%.2f Y:%.2f DURATION:%d ID:%d\n", point_data[i].position.x, point_data[i].position.y, point_data[i].duration, point_data[i].id);
 			if(point_data[i].id == -1){ input_mat.copyTo(save_mat); }
 		}
-
+/*
 		output_mat.setTo(cv::Scalar(0, 0, 0));
 		input_mat.copyTo(visual_mat[current_index]);
 		for (int i = 0; i < 10; i++)
@@ -983,11 +814,13 @@ int main()
 		current_index = (current_index + 1) % 10;
 
 		cv::imshow("accum out", output_mat);
-
+*/
 	}
 
 //	if(video_mode)
 //		cv::imwrite("rawimage.png", save_mat);
+
+	delete camera_capture;
 
 	return 0;
 }

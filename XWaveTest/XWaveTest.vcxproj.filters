@@ -24,6 +24,9 @@
     <ClInclude Include="CodeLEDComm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Flea3.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CodeLED.cpp">
@@ -33,6 +36,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="CodeLEDComm.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Flea3.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

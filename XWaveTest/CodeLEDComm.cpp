@@ -110,19 +110,29 @@ void CodeLEDComm::Finalize()
 
 #ifdef __CODE_LED_COMM_TEST__
 
+#include "Flea3.h"
+
 // Unit test
 int main()
 {
 	bool video_mode = true;
-	VideoCapture camera_capture;
+//	VideoCapture camera_capture;
+	Flea3* camera_capture = NULL;
 
 	if (video_mode == true)
 	{
+		camera_capture = new Flea3(0);
+		camera_capture->SetShutter(0.061f);
+		camera_capture->SetExposure(2.4f);
+		camera_capture->SetGamma(4.0f);
+		camera_capture->SetGain(18.1f);
+/*
 		camera_capture.open(2);
 		camera_capture.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
 		camera_capture.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
 		camera_capture.set(CV_CAP_PROP_EXPOSURE, -12.0f);
 		camera_capture.set(CV_CAP_PROP_GAIN, 300.0f);
+*/
 	}
 
 	cv::Mat input_mat;
@@ -130,7 +140,8 @@ int main()
 	cv::Mat output_mat;
 
 	if (video_mode)
-		camera_capture >> input_mat;
+//		camera_capture >> input_mat;
+		input_mat = camera_capture->Run();
 	else
 		input_mat = cv::imread("rawimage.png");
 
@@ -147,7 +158,8 @@ int main()
 	while (true)
 	{
 		if (video_mode)
-			camera_capture >> input_mat;
+//			camera_capture >> input_mat;
+			input_mat = camera_capture->Run();
 
 		int input_key = cv::waitKey(1);
 		if (input_key == ' ') break;
