@@ -167,8 +167,8 @@ void CodeLED::DecodeID2(PointData& inout_point)
 		// code input
 		for (int j = 0; j < 11; j++)
 		{
-			int target_y1 = head_end[i] + int((1.5 + j * 2.0f) * unit_code + 0.5f);
-			int target_y2 = head_end[i] + int((2.5 + j * 2.0f) * unit_code + 0.5f);
+			int target_y1 = head_end[i] + int((1.5 + j * 2.0f) * unit_code - 0.5f);
+			int target_y2 = head_end[i] + int((2.5 + j * 2.0f) * unit_code - 0.5f);
 
 			// window boundary check
 			if(target_y1 >= window_height - 1 || target_y2 >= window_height - 1){	break;	}
@@ -272,8 +272,8 @@ void CodeLED::DecodeID2(PointData& inout_point)
 		// code input
 		for (int j = 0; j < 11; j++)
 		{
-			int target_y1 = head_start[i] - new_code_interval + int((1.5 + j * 2.0f) * unit_code + 0.5f);
-			int target_y2 = head_start[i] - new_code_interval + int((2.5 + j * 2.0f) * unit_code + 0.5f);
+			int target_y1 = head_start[i] - new_code_interval + int((1.5 + j * 2.0f) * unit_code - 0.5f);
+			int target_y2 = head_start[i] - new_code_interval + int((2.5 + j * 2.0f) * unit_code - 0.5f);
 
 			// window boundary check
 			if (target_y1 < 0 || target_y2 < 0) { continue; }
@@ -375,7 +375,8 @@ void CodeLED::DecodeID2(PointData& inout_point)
 		{
 			fprintf(fp, "%s", debug_log);
 
-			fprintf(fp, "0 ");
+			fprintf(fp, "0, ");
+
 			for(int y=1; y<window_height; y++)
 			{
 				int i;
@@ -385,7 +386,8 @@ void CodeLED::DecodeID2(PointData& inout_point)
 			}
 			fprintf(fp, "\n");
 
-			fprintf(fp, "0 ");
+			fprintf(fp, "0, ");
+
 			for (int y = 1; y<window_height; y++)
 			{
 				int i;
@@ -558,28 +560,28 @@ void CodeLED::GenerateBarcode()
 //	FILE* fp = fopen("Debug.csv", "w");
 //	if (fp)
 	{
-		sprintf(debug_log, ", %f", sum_image.at<float>(0, 0));
+		sprintf(debug_log, "%f", sum_image.at<float>(0, 0));
 
 		for (int y = 1; y < window_height; y++) {
 			sprintf(debug_log, "%s, %f", debug_log, sum_image.at<float>(y, 0));
 		}
 		sprintf(debug_log, "%s\n", debug_log);
 
-		sprintf(debug_log, "%s, %d", debug_log, barcode_image.at<unsigned char>(0, 0));
+		sprintf(debug_log, "%s %d", debug_log, barcode_image.at<unsigned char>(0, 0));
 
 		for (int y = 1; y < window_height; y++) {
 			sprintf(debug_log, "%s, %d", debug_log, barcode_image.at<unsigned char>(y, 0));
 		}
 		sprintf(debug_log, "%s\n", debug_log);
 
-		sprintf(debug_log, "%s, %f", debug_log, max_threshold_array[0]);
+		sprintf(debug_log, "%s %f", debug_log, max_threshold_array[0]);
 
 		for (int y = 1; y < window_height; y++) {
 			sprintf(debug_log, "%s, %f", debug_log, max_threshold_array[y]);
 		}
 		sprintf(debug_log, "%s\n", debug_log);
 
-		sprintf(debug_log, "%s, %f", debug_log, min_threshold_array[0]);
+		sprintf(debug_log, "%s %f", debug_log, min_threshold_array[0]);
 
 		for (int y = 1; y < window_height; y++) {
 			sprintf(debug_log, "%s, %f", debug_log, min_threshold_array[y]);
@@ -807,7 +809,7 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 // Unit test
 int main()
 {
-	int video_mode = 2;
+	int video_mode = 1;
 	VideoCapture video_reader;
 	Flea3* camera_capture = NULL;
 	
