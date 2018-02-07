@@ -13,7 +13,7 @@ void CodeLED::Initialize(Mat in_image)
 	max_paint_threshold = 1000;
 	min_diff_threshold = 30.0f;
 //	peak_threshold = 40.0f;
-	peak_threshold = 100.0f;
+	peak_threshold = 20.0f;
 
 	code_threshold[0] = 8;
 	code_threshold[1] = 18;
@@ -125,7 +125,7 @@ void CodeLED::DecodeID2(PointData& inout_point)
 
 	// preparing for decode
 	int new_code_interval = code_interval;
-
+/*
 	if(head_start.size() >= 2)
 	{
 
@@ -138,8 +138,7 @@ void CodeLED::DecodeID2(PointData& inout_point)
 			printf("new interval %d\n", new_code_interval);
 		}
 	}
-
-	float unit_code = new_code_interval / 24.0f;
+*/
 	unsigned char code_filled = 0; // 0:not decoded 1:decoded for each bit
 	unsigned char parity_filled = 0; // 0:not decoded 1:decoded for each bit
 	float code_strength[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};	// strength computed by diff of brightness
@@ -154,6 +153,17 @@ void CodeLED::DecodeID2(PointData& inout_point)
 	// forward search
 	for (int i = 0; i < head_end.size(); i++)
 	{
+		// code interval update
+		for (int j = 0; j < head_start.size(); j++)
+		{
+			if (abs(code_interval - (head_start[j] - head_end[i])) < 10)
+			{
+				new_code_interval = head_start[j] - head_end[i];
+			}
+		}
+
+		float unit_code = new_code_interval / 24.0f;
+
 		// code input
 		for (int j = 0; j < 11; j++)
 		{
@@ -218,13 +228,13 @@ void CodeLED::DecodeID2(PointData& inout_point)
 			if (decode_parity == parity)
 			{
 				inout_point.id = (int)decode_id;
-				//			printf("COMPLETE\n");
+//				printf("COMPLETE with Forward search\n");
 				return;
 			}
 			else if (prev_decode_id == decode_id && decode_id != 0)
 			{
 				inout_point.id = (int)decode_id;
-				//			printf("COMPLETE\n");
+//				printf("COMPLETE with Forward search\n");
 				return;
 			}
 			else 
@@ -248,11 +258,22 @@ void CodeLED::DecodeID2(PointData& inout_point)
 	// backward search
 	for (int i = 0; i < head_start.size(); i++)
 	{
+		// code interval update
+		for (int j = 0; j < head_end.size(); j++)
+		{
+			if (abs(code_interval - (head_start[i] - head_end[j])) < 10)
+			{
+				new_code_interval = head_start[i] - head_end[j];
+			}
+		}
+
+		float unit_code = new_code_interval / 24.0f;
+
 		// code input
 		for (int j = 0; j < 11; j++)
 		{
-			int target_y1 = head_start[i] - code_interval + int((1.5 + j * 2.0f) * unit_code + 0.5f);
-			int target_y2 = head_start[i] - code_interval + int((2.5 + j * 2.0f) * unit_code + 0.5f);
+			int target_y1 = head_start[i] - new_code_interval + int((1.5 + j * 2.0f) * unit_code + 0.5f);
+			int target_y2 = head_start[i] - new_code_interval + int((2.5 + j * 2.0f) * unit_code + 0.5f);
 
 			// window boundary check
 			if (target_y1 < 0 || target_y2 < 0) { continue; }
@@ -312,13 +333,13 @@ void CodeLED::DecodeID2(PointData& inout_point)
 			if (decode_parity == parity)
 			{
 				inout_point.id = (int)decode_id;
-				//			printf("COMPLETE\n");
+				printf("COMPLETE with Back search\n");
 				return;
 			}
 			else if (prev_decode_id == decode_id && decode_id != 0)
 			{
 				inout_point.id = (int)decode_id;
-				//			printf("COMPLETE\n");
+				printf("COMPLETE with Back search\n");
 				return;
 			}
 			else
@@ -438,6 +459,7 @@ void CodeLED::GenerateBarcode()
 
 	float min_threshold_array[1048];
 	float max_threshold_array[1048];
+	float vari_peak_threshold = peak_threshold;
 
 	// generating barcode image
 	for (int y = 0; y < window_height - 1; y++)
@@ -445,13 +467,14 @@ void CodeLED::GenerateBarcode()
 		float sobel_value1 = sobel_image.at<float>(y, 0);
 		float sobel_value2 = sobel_image.at<float>(y + 1, 0);
 
-		// when passing high peak, it must be 1
+		// when passing high peak, here must be 1
 		if (sobel_value1 > 0
 		 && sobel_value2 <= 0) {
 			float peak_rate = 1.0f - sobel_value1 / (sobel_value1 - sobel_value2);
 			float new_peak = sum_image.at<float>(y, 0) * peak_rate + sum_image.at<float>(y + 1, 0) * (1.0f - peak_rate);
 
-			if (new_peak - bottom_value > peak_threshold)
+			// checking if small peak or not 
+			if (new_peak - bottom_value > vari_peak_threshold)
 			{
 				peak_value = new_peak;
 				is_peak = true;
@@ -486,7 +509,7 @@ void CodeLED::GenerateBarcode()
 			float peak_rate = 1.0f + sobel_value1 / (-sobel_value1 + sobel_value2);
 			float new_bottom = sum_image.at<float>(y, 0) * peak_rate + sum_image.at<float>(y + 1, 0) * (1.0f - peak_rate);
 
-			if (peak_value - new_bottom > peak_threshold)
+			if (peak_value - new_bottom > vari_peak_threshold)
 			{
 				bottom_value = new_bottom;
 				is_bottom = true;
@@ -516,6 +539,10 @@ void CodeLED::GenerateBarcode()
 
 		max_threshold_array[y] = peak_value;
 		min_threshold_array[y] = bottom_value;
+		if((peak_value - bottom_value) * 0.005f > peak_threshold)
+			vari_peak_threshold = (peak_value - bottom_value) * 0.005f;
+		else
+			peak_threshold = vari_peak_threshold;
 
 		if (is_up)
 		{
@@ -780,7 +807,7 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 // Unit test
 int main()
 {
-	int video_mode = 1;
+	int video_mode = 2;
 	VideoCapture video_reader;
 	Flea3* camera_capture = NULL;
 	
@@ -871,7 +898,7 @@ int main()
 //			if(point_data[i].id == -1){ input_mat.copyTo(save_mat); }
 		}
 
-		if (point_data.size() == 1 && video_mode == 1)
+		if (point_data.size() > 0 && video_mode == 1)
 			if(point_data[0].id == -1)
 				cv::imwrite("debugimage.png", color_mat);
 /*
