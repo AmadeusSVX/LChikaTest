@@ -119,6 +119,7 @@ int main()
 		cv::imshow("input", input_mat);
 
 		for (int i = 0; i < point_data.size(); i++) {
+			cv::rectangle(input_mat, cv::Point(point_data[i].position.x - 20.0f, point_data[i].position.y - 20.0f), cv::Point(point_data[i].position.x + 20.0f, point_data[i].position.y + 20.0f), cv::Scalar(200, 200, 200), 5, 8);
 			printf("id:%d duration:%d  x:%f, y:%f\n", point_data[i].id, point_data[i].duration, point_data[i].position.x, point_data[i].position.y);
 		}
 		

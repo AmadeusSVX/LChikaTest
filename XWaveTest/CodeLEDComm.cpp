@@ -5,7 +5,7 @@ void CodeLEDComm::Initialize(Mat in_image)
 	led_comm_interval = 1000.0f;
 	led_comm_bitrate = 100.0f;
 
-	tracking_threshold = 30.0f;
+	tracking_threshold = 400.0f;
 	code_led.Initialize(in_image);
 }
 
@@ -115,37 +115,58 @@ void CodeLEDComm::Finalize()
 // Unit test
 int main()
 {
-	bool video_mode = true;
-//	VideoCapture camera_capture;
+	int video_mode = 0;
+	bool video_record = true;
+	VideoCapture video_reader;
 	Flea3* camera_capture = NULL;
 
-	if (video_mode == true)
+	VideoWriter video_writer;
+
+	Mat color_mat;
+
+	if (video_mode == 0)
 	{
 		camera_capture = new Flea3(0);
-		camera_capture->SetShutter(0.061f);
+		camera_capture->SetShutter(0.031f);
 		camera_capture->SetExposure(2.4f);
 		camera_capture->SetGamma(4.0f);
 		camera_capture->SetGain(18.1f);
-/*
-		camera_capture.open(2);
-		camera_capture.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
-		camera_capture.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
-		camera_capture.set(CV_CAP_PROP_EXPOSURE, -12.0f);
-		camera_capture.set(CV_CAP_PROP_GAIN, 300.0f);
-*/
+
+		if(video_record)
+			video_writer = VideoWriter(".\\CommVideo.avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 60.0, Size(1280, 960));
+
+		//		camera_capture.open(0);
+		//		camera_capture.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
+		//		camera_capture.set(CV_CAP_PROP_FRAME_HEIGHT, 960);
+		//		camera_capture.set(CV_CAP_PROP_EXPOSURE, -12.0f);
+		//		camera_capture.set(CV_CAP_PROP_GAIN, 300.0f);
 	}
+	else if (video_mode == 1)
+	{
+		video_reader = VideoCapture(".\\OutVideo.avi");
+	}
+	else
+		color_mat = imread("debugimage.png");
+
 
 	cv::Mat input_mat;
-	cv::Mat visual_mat[10];
 	cv::Mat output_mat;
+	cv::Mat save_mat;
 
-	if (video_mode)
-//		camera_capture >> input_mat;
+
+	if (video_mode == 0)
+		//		camera_capture >> input_mat;
 		input_mat = camera_capture->Run();
+	else if (video_mode == 1)
+	{
+		video_reader >> color_mat; // = cv::imread("rawimage1.png");
+		cvtColor(color_mat, input_mat, CV_BGR2GRAY);
+	}
 	else
-		input_mat = cv::imread("rawimage.png");
+	{
+		cvtColor(color_mat, input_mat, CV_BGR2GRAY);
+	}
 
-	for (int i = 0; i<10; i++)	input_mat.copyTo(visual_mat[i]);
 	output_mat = cv::Mat(input_mat.size(), input_mat.type());
 
 	CodeLEDComm x_tracker;
@@ -157,41 +178,54 @@ int main()
 
 	while (true)
 	{
-		if (video_mode)
-//			camera_capture >> input_mat;
+		if (video_mode == 0)
 			input_mat = camera_capture->Run();
+		else if (video_mode == 1)
+		{
+			video_reader >> color_mat;
+			if (color_mat.cols == 0) break;
+			cvtColor(color_mat, input_mat, CV_BGR2GRAY);
+		}
+		else
+			cvtColor(color_mat, input_mat, CV_BGR2GRAY);
+
+		cvtColor(input_mat, output_mat, CV_GRAY2BGR);
 
 		int input_key = cv::waitKey(1);
 		if (input_key == ' ') break;
 
 		x_tracker.Run(input_mat, point_data);
-		cv::imshow("input", input_mat);
 
 		for (int i = 0; i < point_data.size(); i++) {
 			if(point_data[i].data_status == INPUT_END || point_data[i].data_status == UPDATING)
 			{ 
+				cv::rectangle(output_mat, cv::Point(point_data[i].position.x - 20.0f, point_data[i].position.y - 20.0f), cv::Point(point_data[i].position.x + 20.0f, point_data[i].position.y + 20.0f), cv::Scalar(0, 200, 0), 5, 8);
+				cv::putText(output_mat, point_data[i].data.c_str(), cv::Point(point_data[i].position.x, point_data[i].position.y - 50.0f), cv::FONT_HERSHEY_SIMPLEX, 1.2, cv::Scalar(0, 200, 0), 2, CV_AA);
 				printf("id:%d duration:%d speed:%.2f bps --%s-- x:%f, y:%f\n", point_data[i].id, point_data[i].duration, x_tracker.GetBitRate(), point_data[i].data.c_str(), point_data[i].position.x, point_data[i].position.y);
 			}
 		}
+
+		cv::imshow("input", input_mat);
 
 		if (point_data.size() == 0) {
 			printf("nothing detected\n");
 		}
 
-		output_mat.setTo(cv::Scalar(0, 0, 0));
-		input_mat.copyTo(visual_mat[current_index]);
-		for (int i = 0; i < 10; i++)
-		{
-			output_mat = output_mat + visual_mat[i];
-		}
 		current_index = (current_index + 1) % 10;
+		cv::imshow("out", output_mat);
 
-		cv::imshow("accum out", output_mat);
+		if (video_mode == 0 && video_record)
+		{
+			cvtColor(input_mat, color_mat, CV_GRAY2BGR);
+			video_writer << output_mat;
+		}
 
 	}
 
 	//	if(video_mode)
 	//		cv::imwrite("rawimage.png", input_mat);
+
+	waitKey(0);
 
 	return 0;
 }

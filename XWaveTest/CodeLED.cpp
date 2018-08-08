@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include "CodeLED.h"
 
+#include <omp.h>
+
 char debug_log[100000];
 
 void CodeLED::Initialize(Mat in_image)
 {
 	// initialize setting values
-	window_width = 40;
+	window_width = 50;
 	window_height = 800;
 	brightness_threshold = 150;
 	min_paint_threshold = 10;
@@ -18,8 +20,8 @@ void CodeLED::Initialize(Mat in_image)
 	code_threshold[0] = 8;
 	code_threshold[1] = 18;
 
-//	code_interval = 147;
-	code_interval = 188;
+	code_interval = 173;		// for Arduino Uno
+//	code_interval = 188;		// for Studino (Overhead is happening?)
 
 	decode_length_threshold = 12;
 
@@ -50,17 +52,14 @@ int CodeLED::DynamicThresholding()
 
 void CodeLED::Run(Mat in_image, std::vector<PointData>& out_points)
 {
-	tick_meter.reset();
-	tick_meter.start();
 
 	// 0.6ms
 //	cvtColor(in_image, gray_image, CV_BGRA2GRAY);	// Should be only 8bit or more...?
 	in_image.copyTo(gray_image);
 
 	// 1.5ms
-	brightness_threshold = DynamicThresholding();
+//	brightness_threshold = DynamicThresholding();
 //	printf("Threshold: %d\n", brightness_threshold);
-
 
 //	DetectCenter(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);	// 9ms
 	DetectCenter2(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);	// 12ms
@@ -70,13 +69,11 @@ void CodeLED::Run(Mat in_image, std::vector<PointData>& out_points)
 		SetROI(window_width, window_height, out_points[i].position);
 		GenerateBarcode();
 		DecodeID2(out_points[i]);
+
 //		printf("id:%d x:%f, y:%f\n", out_points[i].id, out_points[i].position.x, out_points[i].position.y);
 //		cv::imshow("ROI", roi_image);
 //		cv::imshow("Barcode", barcode_image);
 	}
-
-	tick_meter.stop();
-	printf("Process Time1: %f\n", tick_meter.getTimeMilli());
 }
 
 void CodeLED::DecodeID2(PointData& inout_point)
@@ -125,12 +122,11 @@ void CodeLED::DecodeID2(PointData& inout_point)
 
 	// preparing for decode
 	int new_code_interval = code_interval;
-/*
+
 	if(head_start.size() >= 2)
 	{
-
-//		int estimate_code_interval = head_start[1] - head_end[0];
-//		printf("new interval %d\n", estimate_code_interval);
+		int estimate_code_interval = head_start[1] - head_end[0];
+		printf("new interval %d\n", estimate_code_interval);
 
 		if(abs(code_interval - (head_start[1] - head_end[0])) < 5)
 		{
@@ -138,7 +134,7 @@ void CodeLED::DecodeID2(PointData& inout_point)
 			printf("new interval %d\n", new_code_interval);
 		}
 	}
-*/
+
 	unsigned char code_filled = 0; // 0:not decoded 1:decoded for each bit
 	unsigned char parity_filled = 0; // 0:not decoded 1:decoded for each bit
 	float code_strength[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};	// strength computed by diff of brightness
@@ -333,13 +329,13 @@ void CodeLED::DecodeID2(PointData& inout_point)
 			if (decode_parity == parity)
 			{
 				inout_point.id = (int)decode_id;
-				printf("COMPLETE with Back search\n");
+//				printf("COMPLETE with Back search\n");
 				return;
 			}
 			else if (prev_decode_id == decode_id && decode_id != 0)
 			{
 				inout_point.id = (int)decode_id;
-				printf("COMPLETE with Back search\n");
+//				printf("COMPLETE with Back search\n");
 				return;
 			}
 			else
@@ -556,6 +552,8 @@ void CodeLED::GenerateBarcode()
 		}
 	}
 
+	return;
+
 	// for debug log
 //	FILE* fp = fopen("Debug.csv", "w");
 //	if (fp)
@@ -702,15 +700,27 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 
 	vertical_sobel = Mat(Size(gray_image.size().width, gray_image.size().height), CV_32F);
 	vertical_band_sobel = Mat(Size(20, gray_image.size().height), CV_32F);
-
+/*
+	tick_meter.reset();
+	tick_meter.start();
+	tick_meter.stop();
+	static float tick_time = 0.0f;
+	tick_time = tick_time * 0.9f + tick_meter.getTimeMilli() * 0.1f;
+	printf("Process time: %f\n", tick_time);
+*/
 	Sobel(gray_image, vertical_sobel, CV_32F, 0, 1, 5);
 
 	// generating integral image of vertical sobel image
+
+	#pragma omp parallel for
 	for (int x = 0; x < gray_image.size().width; x++)
 	{
+//		float* tgt_pointer = horizontal_brightness.ptr<float>(0);
 		for (int y = 0; y < gray_image.size().height; y++)
 		{
 			horizontal_brightness.at<float>(0, x) += fabs(vertical_sobel.at<float>(y, x));
+//			float* src_pointer = vertical_sobel.ptr<float>(y);
+//			tgt_pointer[x] += fabs(src_pointer[x]);
 		}
 	}
 
@@ -809,8 +819,9 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 // Unit test
 int main()
 {
-	int video_mode = 1;
+	int video_mode = 0;
 	VideoCapture video_reader;
+	bool is_record = true;
 	Flea3* camera_capture = NULL;
 	
 	VideoWriter video_writer;
@@ -825,7 +836,8 @@ int main()
 		camera_capture->SetGamma(4.0f);
 		camera_capture->SetGain(18.1f);
 
-		video_writer = VideoWriter(".\\OutVideo.avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 60.0, Size(1280, 960));
+		if(is_record)
+			video_writer = VideoWriter(".\\Decoded.avi", VideoWriter::fourcc('M', 'J', 'P', 'G'), 60.0, Size(1280, 960));
 
 //		camera_capture.open(0);
 //		camera_capture.set(CV_CAP_PROP_FRAME_WIDTH, 1280);
@@ -835,13 +847,12 @@ int main()
 	}
 	else if(video_mode == 1)
 	{
-		video_reader = VideoCapture(".\\OutVideo.avi");
+		video_reader = VideoCapture(".\\OutVideo1.avi");
 	}
 	else
 		color_mat = imread("debugimage.png");
 
 	cv::Mat input_mat;
-	cv::Mat visual_mat[10];
 	cv::Mat output_mat;
 	cv::Mat save_mat;
 
@@ -857,9 +868,6 @@ int main()
 	{
 		cvtColor(color_mat, input_mat, CV_BGR2GRAY);
 	}
-
-	for(int i=0; i<10; i++)	input_mat.copyTo(visual_mat[i]);
-	output_mat = cv::Mat(input_mat.size(), input_mat.type());
 
 	CodeLED x_detector;
 
@@ -885,8 +893,10 @@ int main()
 		if(video_mode == 0)
 		{ 
 			cvtColor(input_mat, color_mat, CV_GRAY2BGR);
-			video_writer << color_mat;
+//			video_writer << color_mat;
 		}
+
+		cvtColor(input_mat, output_mat, CV_GRAY2BGR);
 
 		int input_key = cv::waitKey(1);
 		if (input_key == ' ') break;
@@ -896,13 +906,22 @@ int main()
 
 		for (int i = 0; i < point_data.size(); i++)
 		{
+			char buffer[10];
+			cv::rectangle(output_mat, cv::Point(point_data[i].position.x - 20.0f, point_data[i].position.y - 20.0f), cv::Point(point_data[i].position.x + 20.0f, point_data[i].position.y + 20.0f), cv::Scalar(0, 200, 0), 5, 8);
+			cv::putText(output_mat, _itoa(point_data[i].id, buffer, 10), cv::Point(point_data[i].position.x, point_data[i].position.y - 50.0f), cv::FONT_HERSHEY_SIMPLEX, 1.2, cv::Scalar(0, 200, 0), 2, CV_AA);
 			printf("Point X:%.2f Y:%.2f DURATION:%d ID:%d\n", point_data[i].position.x, point_data[i].position.y, point_data[i].duration, point_data[i].id);
-//			if(point_data[i].id == -1){ input_mat.copyTo(save_mat); }
 		}
 
 		if (point_data.size() > 0 && video_mode == 1)
 			if(point_data[0].id == -1)
 				cv::imwrite("debugimage.png", color_mat);
+
+		cv::imshow("output", output_mat);
+
+		if(is_record)
+			video_writer << output_mat;
+
+		cv::waitKey(1);
 /*
 		output_mat.setTo(cv::Scalar(0, 0, 0));
 		input_mat.copyTo(visual_mat[current_index]);
