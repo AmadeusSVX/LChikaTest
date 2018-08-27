@@ -87,8 +87,9 @@ protected:
 	void DetectCenter2(int in_peak_threshold, int in_min_area_threshold, int in_max_area_threshold, std::vector<PointData>& inout_points);
 	void SetROI(int in_width, int in_height, Point2f in_position);
 	void GenerateBarcode();
-	void DecodeID(PointData& inout_points);		// for gap length coding
+//	void DecodeID(PointData& inout_points);		// for gap length coding
 	void DecodeID2(PointData& inout_points);	// for Manchester coding
+	void DecodeID3(PointData& inout_points);	// for Manchester coding with Robust header detection
 
 public:
 	void Initialize(Mat in_image);

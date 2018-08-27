@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "CodeLED.h"
 
+#include <iostream>
 #include <omp.h>
 
 char debug_log[100000];
@@ -8,9 +9,9 @@ char debug_log[100000];
 void CodeLED::Initialize(Mat in_image)
 {
 	// initialize setting values
-	window_width = 50;
+	window_width = 20;
 	window_height = 800;
-	brightness_threshold = 150;
+	brightness_threshold = 50;
 	min_paint_threshold = 10;
 	max_paint_threshold = 1000;
 	min_diff_threshold = 30.0f;
@@ -20,7 +21,7 @@ void CodeLED::Initialize(Mat in_image)
 	code_threshold[0] = 8;
 	code_threshold[1] = 18;
 
-	code_interval = 173;		// for Arduino Uno
+	code_interval = 177;		// for Arduino Uno
 //	code_interval = 188;		// for Studino (Overhead is happening?)
 
 	decode_length_threshold = 12;
@@ -61,8 +62,8 @@ void CodeLED::Run(Mat in_image, std::vector<PointData>& out_points)
 //	brightness_threshold = DynamicThresholding();
 //	printf("Threshold: %d\n", brightness_threshold);
 
-//	DetectCenter(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);	// 9ms
-	DetectCenter2(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);	// 12ms
+	DetectCenter(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);	// 9ms
+//	DetectCenter2(brightness_threshold, min_paint_threshold, max_paint_threshold, out_points);	// 12ms
 
 	for (int i = 0; i < out_points.size(); i++)
 	{
@@ -126,12 +127,12 @@ void CodeLED::DecodeID2(PointData& inout_point)
 	if(head_start.size() >= 2)
 	{
 		int estimate_code_interval = head_start[1] - head_end[0];
-		printf("new interval %d\n", estimate_code_interval);
+//		printf("new interval %d\n", estimate_code_interval);
 
 		if(abs(code_interval - (head_start[1] - head_end[0])) < 5)
 		{
 			new_code_interval = head_start[1] - head_end[0];
-			printf("new interval %d\n", new_code_interval);
+//			printf("new interval %d\n", new_code_interval);
 		}
 	}
 
@@ -358,6 +359,8 @@ void CodeLED::DecodeID2(PointData& inout_point)
 	}
 */
 
+	return;
+
 	if(head_start.size() > 1)
 	{
 		FILE* fp;
@@ -443,7 +446,7 @@ void CodeLED::GenerateBarcode()
 	ave_value /= window_width;
 //	cv::imshow("ROI", roi_image);
 //	cv::imshow("SUM", sum_image / 3000.0f);
-	cv::GaussianBlur(sum_image, sum_image, cv::Size(1, 9), 0.0f);
+	cv::GaussianBlur(sum_image, sum_image, cv::Size(1, 7), 0.0f);
 	cv::Sobel(sum_image, sobel_image, CV_32F, 0, 1, 5);
 //	cv::imshow("SOBEL", sobel_image * 0.001f);
 
@@ -502,7 +505,7 @@ void CodeLED::GenerateBarcode()
 		}
 		// when passing low peak, it must be 0
 		else if (sobel_value1 <= 0
-			&& sobel_value2 > 0)
+		   	  && sobel_value2 > 0)
 		{
 			float peak_rate = 1.0f + sobel_value1 / (-sobel_value1 + sobel_value2);
 			float new_bottom = sum_image.at<float>(y, 0) * peak_rate + sum_image.at<float>(y + 1, 0) * (1.0f - peak_rate);
@@ -552,11 +555,13 @@ void CodeLED::GenerateBarcode()
 		}
 	}
 
-	return;
+
+//	return;
+//	cv::imshow("barcode", barcode_image);
 
 	// for debug log
-//	FILE* fp = fopen("Debug.csv", "w");
-//	if (fp)
+	FILE* fp = fopen("Debug.csv", "w");
+	if (fp)
 	{
 		sprintf(debug_log, "%f", sum_image.at<float>(0, 0));
 
@@ -586,8 +591,11 @@ void CodeLED::GenerateBarcode()
 		}
 		sprintf(debug_log, "%s\n", debug_log);
 
-//		fclose(fp);
+		fprintf(fp, debug_log);
+		fclose(fp);
 	}
+
+	return;
 /*
 	FILE* fp = fopen("Debug.csv", "w");
 	if (fp)
@@ -627,11 +635,13 @@ void CodeLED::SetROI(int in_width, int in_height, Point2f in_position)
 void CodeLED::DetectCenter(int in_peak_threshold, int in_min_area_threshold, int in_max_area_threshold, std::vector<PointData>& inout_points)
 {
 	GaussianBlur(gray_image, blur_image, cv::Size(3, 3), 0);
-	threshold(blur_image, thresh_image, in_peak_threshold, 255, CV_THRESH_BINARY);
+	threshold(gray_image, thresh_image, in_peak_threshold, 255, CV_THRESH_BINARY);
+
 	erode(thresh_image, thresh_image, element_erode);
 	dilate(thresh_image, thresh_image, element_dilate);
 
-	int num_labels = cv::connectedComponents(thresh_image, labels_image, 4, CV_16U);
+
+	int num_labels = cv::connectedComponents(thresh_image, labels_image, 8, CV_16U);
 	std::vector<int> label_counter;
 	label_counter.resize(num_labels);
 
@@ -654,18 +664,45 @@ void CodeLED::DetectCenter(int in_peak_threshold, int in_min_area_threshold, int
 		}
 	}
 
-	inout_points.clear();
+	std::vector<PointData> temp_points;
 	for (int j = 0; j < num_labels; j++)
 	{
 		if (label_counter[j] > in_min_area_threshold
-			&&  label_counter[j] < in_max_area_threshold)
+		&&  label_counter[j] < in_max_area_threshold)
 		{
 			PointData new_point_data;
 			new_point_data.position = Point2f(label_points[j].x / label_counter[j], label_points[j].y / label_counter[j]);
-			inout_points.push_back(new_point_data);
+			temp_points.push_back(new_point_data);
 //			printf("label:%d num:%d x:%f, y:%f\n", j, label_counter[j], new_point_data.position.x, new_point_data.position.y);
 		}
 	}
+
+	inout_points.clear();
+
+//	inout_points = temp_points;
+//	if(false)
+	for (int j = 0; j < temp_points.size(); j++)
+	{
+		int k = 0;
+		for (k = j; k < temp_points.size(); k++)
+		{
+			if (fabs(temp_points[j].position.x - temp_points[k].position.x) < 25)
+			{
+
+				if (blur_image.at<float>((int)temp_points[j].position.y, (int)temp_points[j].position.x) < blur_image.at<float>((int)temp_points[k].position.y, (int)temp_points[k].position.x))
+				{
+					break;
+				}
+			}
+		}
+
+		if (k == temp_points.size())
+		{
+			inout_points.push_back(temp_points[j]);
+		}
+	}
+
+//	std::cout << inout_points.size() << std::endl;
 /*
 	// for debug
 	mask_image = cv::Mat(labels_image.size(), CV_8U);
@@ -734,7 +771,7 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 	{
 		float first_value = horizontal_sobel.at<float>(0, x);
 		float second_value = horizontal_sobel.at<float>(0, x + 1);
-		if (first_value > 0 && second_value < 0 && horizontal_brightness.at<float>(0, x) > 100000.0f)
+		if (first_value > 0 && second_value < 0 && horizontal_brightness.at<float>(0, x) > 50000.0f)
 		{
 			PointData new_point;
 			new_point.position.x = x + (first_value/(first_value - second_value)); // compute with subpixel accuracy
@@ -745,10 +782,12 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 
 	vertical_brightness = Mat(Size(1, gray_image.size().height), CV_32F);
 
+	// for each candidate, y peak detection
+	#pragma omp parallel for
 	for (int i = 0; i < point_candidates.size(); i++)
 	{
 		vertical_brightness.setTo(0.0f);
-		float max_vertical_value = 0.0f;
+		float max_vertical_value = 100.0f;
 
 		for (int y = 0; y < gray_image.size().height; y++)
 		{
@@ -763,7 +802,7 @@ void CodeLED::DetectCenter2(int in_peak_threshold, int in_min_area_threshold, in
 			}
 		}
 
-		GaussianBlur(vertical_brightness, vertical_brightness, Size(1, 3), 0);
+		GaussianBlur(vertical_brightness, vertical_brightness, Size(1, 5), 0);
 		Sobel(vertical_brightness, vertical_band_sobel, CV_32F, 0, 1, 5);
 
 		for (int y = 0; y < gray_image.size().height - 1; y++)
